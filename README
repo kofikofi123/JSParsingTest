@@ -3,4 +3,4 @@ stuff
 dont use 
 
 
-todo: Chop down on some repeating code 
+todo: Chop down on some repeating code. Also 0 out resized buffer in UnicodeBuffer
