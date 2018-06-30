@@ -28,8 +28,8 @@
 #define STATE_OCTAL_LEGACY_LITERAL 0xD
 
 //Token Flags
-#define FLAG_RESERVED 1
-#define FLAG_LEGACY 2
+#define FLAG_RESERVED 0
+#define FLAG_LEGACY 1
 
 //Temporary or perm clean up solution
 #define CLEANUP_SEQUENCE() \

@@ -1,2 +1,2 @@
 //test
-var broski\u{61} = 2;
+var broski\u{61} = 0x32;

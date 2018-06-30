@@ -298,8 +298,8 @@ struct Token* tokenize(char* source){
 			resetUBuffer(buffer);
 			save(stream);
 			reconsume = 1;
-			currentInput = quickAdvance(stream);
 			if (currentInput == 0x30){
+				currentInput = quickAdvance(stream);
 				if (currentInput == 0x78 || currentInput == 0x58){
 					currentState = STATE_HEX_LITERAL;
 				}else if (currentInput == 0x62 || currentInput == 0x42){
@@ -311,12 +311,12 @@ struct Token* tokenize(char* source){
 				}else{
 					currentState = STATE_OCTAL_LEGACY_LITERAL;
 				}
+			}else{
+				restore(stream);
+				currentState = STATE_DECIMAL_LITERAL;
 			}
-
-			restore(stream);
-			currentState = STATE_DECIMAL_LITERAL;
-
 		}else if (currentState == STATE_HEX_LITERAL){
+			printf("GOKTTTI\n");
 			currentInput = quickAdvance(stream);
 			printf("U+%x test\n", currentInput);
 			CLEANUP_SEQUENCE();
@@ -329,6 +329,7 @@ struct Token* tokenize(char* source){
 			currentInput = quickAdvance(stream);
 
 		if (isFinished(stream)){
+			printf("Sniped U+%x\n", currentInput);
 			break;
 		}
 	}while(1);
@@ -488,17 +489,17 @@ const char* getTokenCategory(struct Token* token){
 	return "<>";
 }
 static struct Token* createToken(uint8_t tokenType){
-	uint32_t temp = sizeof(struct Token);
-	struct Token* token = malloc(temp);
+	//uint32_t temp = sizeof(struct Token);
+	struct Token* token = malloc(sizeof(struct Token));
 
 	if (token == NULL)
 		return NULL;
 
-	memset(token, 0, sizeof(temp));
+	memset(token, 0, sizeof(sizeof(struct Token)));
 
 	token->type = tokenType;
-	/*token->source = NULL;
-	token->length = 0;
+	//token->source = NULL;
+	/*token->length = 0;
 	token->reserved = 0;*/
 
 
@@ -524,11 +525,11 @@ inline void setTokenFlag(struct Token* token, uint32_t flag){
 }
 
 inline void clearTokenFlag(struct Token* token, uint32_t flag){
-	token->flags &= (~flag);
+	token->flags &= (~(1 << flag));
 }
 
 inline uint8_t getTokenFlag(struct Token* token, uint32_t flag){
-	return (token->flags & flag) == flag;
+	return (token->flags & (1 << flag)) == (1 << flag);
 }
 
 static struct Token* tokenizeIdentifer(uint32_t* items){
@@ -587,6 +588,8 @@ static void printTokenChars(struct Token* token, uint8_t type){
 	uint64_t length = token->length;
 	uint32_t* source = token->source;
 	uint32_t temp = 0;
+
+	if (source == NULL) return;
 
 	for (uint64_t i = 0; i < length; i++){
 		temp = source[i];
