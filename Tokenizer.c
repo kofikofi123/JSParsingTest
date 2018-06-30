@@ -316,10 +316,9 @@ struct Token* tokenize(char* source){
 				currentState = STATE_DECIMAL_LITERAL;
 			}
 		}else if (currentState == STATE_HEX_LITERAL){
-			printf("GOKTTTI\n");
-			currentInput = quickAdvance(stream);
-			printf("U+%x test\n", currentInput);
-			CLEANUP_SEQUENCE();
+			if (isHexNumeric(currentInput)){
+				break; //will add later
+			}
 			return NULL;
 		}
 
