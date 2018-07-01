@@ -38,9 +38,13 @@ uint8_t resizeUBuffer(struct UnicodeBuffer* buffer, uint64_t newLength){
 	if (oldBuffer == NULL) return 0;
 	uint32_t* newBuffer = realloc(oldBuffer, newLength);
 
-	if (newBuffer == NULL){
+	if (newBuffer == NULL)
 		return 0;
-	}
+
+	uint64_t oldLength = buffer->length;
+
+	if (newLength > oldLength)
+		memset(newBuffer + oldLength, 0, newLength-oldLength);
 
 	buffer->buffer = newBuffer;
 	buffer->length = newLength;

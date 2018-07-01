@@ -45,10 +45,12 @@ static uint8_t isIdentifierContinue(uint32_t);
 static uint8_t isNumeric(uint32_t);
 static uint8_t isHexNumeric(uint32_t);
 static uint8_t isReservedName(uint32_t*);
+static uint8_t checkNumericEnding(uint32_t);
 static uint8_t matchList(uint32_t*, char**, uint64_t);
 
-static uint8_t toN(uint8_t);
+static uint8_t fromHex(uint8_t);
 static uint8_t inRange(uint32_t, uint32_t, uint32_t);
+static double mvTokenizer(struct UnicodeBuffer*, uint8_t);
 
 
 static void appendToken(struct Token*, struct Token*);
@@ -56,6 +58,7 @@ static struct Token* getTopToken(struct Token*);
 
 static struct Token* tokenizeLineTerminator(uint32_t);
 static struct Token* tokenizeIdentifer(uint32_t*);
+static struct Token* tokenizeNumber(double);
 
 static struct Token* createToken(uint8_t);
 //static struct Token* createLineTerminatorToken(uint32_t);
@@ -81,6 +84,7 @@ struct Token* tokenize(char* source){
 	uint8_t reconsume = 0;
 	uint8_t currentState = 0;
 	uint8_t isUniEsc = 0;
+	double numberTemp = 0;
 
 	do {
 		if (currentState == STATE_NORMAL){
@@ -138,9 +142,6 @@ struct Token* tokenize(char* source){
 				if (currentInput == 0x7B){
 					currentInput = quickAdvance(stream);
 					do {
-						if (isFinished(stream))
-							break;
-
 						if (currentInput == 0x7D){
 							if (tempB > 0)
 								break;
@@ -152,7 +153,7 @@ struct Token* tokenize(char* source){
 							}
 						}
 
-						temp = toN(currentInput);
+						temp = fromHex(currentInput);
 						if (temp == 0xFF){
 							printf("U+%x\n", currentInput);
 							produceSyntaxError("Unknown unicode sequence 3");
@@ -169,7 +170,7 @@ struct Token* tokenize(char* source){
 					}while(1);
 				}else{
 					for (uint8_t temp_counter = 0; temp_counter < 4; temp_counter++){
-						temp = toN(currentInput);
+						temp = fromHex(currentInput);
 						if (temp == 0xFF){
 							produceSyntaxError("Unknown unicode sequence 5");
 							CLEANUP_SEQUENCE()
@@ -191,13 +192,6 @@ struct Token* tokenize(char* source){
 				reconsume = 1;
 				appendUBuffer(buffer, temp_uni);
 			}else{
-				token = tokenizeIdentifer(mallocCopyUBuffer(buffer));
-				if (token == NULL){
-					produceOutOfMemoryError("Tokens");
-					CLEANUP_SEQUENCE()
-					return NULL;
-				}
-
 				reconsume = 1;
 				currentState = STATE_IDENTIFIER;
 			}
@@ -234,7 +228,7 @@ struct Token* tokenize(char* source){
 								return NULL;
 							}
 						}
-						temp = toN(currentInput);
+						temp = fromHex(currentInput);
 						if (temp == 0xFF){
 							produceSyntaxError("Unknown unicode sequence 3");
 							CLEANUP_SEQUENCE()
@@ -250,7 +244,7 @@ struct Token* tokenize(char* source){
 					}while(1);
 				}else{
 					for (uint8_t temp_counter = 0; temp_counter < 4; temp_counter++){
-						temp = toN(currentInput);
+						temp = fromHex(currentInput);
 						if (temp == 0xFF){
 							produceSyntaxError("Unknown unicode sequence 5");
 							CLEANUP_SEQUENCE()
@@ -267,20 +261,20 @@ struct Token* tokenize(char* source){
 					CLEANUP_SEQUENCE()
 					return NULL;
 				}
+
 				reconsume = 1;
 				appendUBuffer(buffer, temp_uni);
 			}else{
-				token = tokenizeIdentifer(mallocCopyUBuffer(buffer));
-				if (token == NULL){
-					produceOutOfMemoryError("Tokens");
-					CLEANUP_SEQUENCE()
-					return NULL;
-				}
-
 				reconsume = 1;
 				currentState = STATE_IDENTIFIER;
 			}
 		}else if (currentState == STATE_IDENTIFIER){
+			token = tokenizeIdentifer(mallocCopyUBuffer(buffer));
+			if (token == NULL){
+				produceOutOfMemoryError("Tokens");
+				CLEANUP_SEQUENCE()
+				return NULL;
+			}
 			if (isReservedName(token->source)){
 				if (isUniEsc){
 					produceSyntaxError("No unicode escape characters in reserved name\n");
@@ -301,6 +295,7 @@ struct Token* tokenize(char* source){
 			if (currentInput == 0x30){
 				currentInput = quickAdvance(stream);
 				if (currentInput == 0x78 || currentInput == 0x58){
+					currentInput = quickAdvance(stream);
 					currentState = STATE_HEX_LITERAL;
 				}else if (currentInput == 0x62 || currentInput == 0x42){
 					currentState = STATE_BIN_LITERAL;
@@ -317,9 +312,28 @@ struct Token* tokenize(char* source){
 			}
 		}else if (currentState == STATE_HEX_LITERAL){
 			if (isHexNumeric(currentInput)){
-				break; //will add later
+				appendUBuffer(buffer, currentInput);
+			}else{/*
+				if (!checkNumericEnding(currentInput)){
+					produceSyntaxError("another eok");
+					CLEANUP_SEQUENCE()
+					return NULL;
+				}*/
+				numberTemp = mvTokenizer(buffer, 0);
+				reconsume = 1;
+				currentState = STATE_AFTER_NUMERIC;
 			}
-			return NULL;
+		}else if (currentState == STATE_AFTER_NUMERIC){
+			token = tokenizeNumber(numberTemp);
+
+			if (token == NULL){
+				produceOutOfMemoryError("eok tiok");
+				CLEANUP_SEQUENCE()
+				return NULL;
+			}
+
+			appendToken(tokens, token);
+			break;
 		}
 
 		if (reconsume)
@@ -332,8 +346,11 @@ struct Token* tokenize(char* source){
 			break;
 		}
 	}while(1);
-
+	printf("eok\n");
 	printTokens(tokens);
+
+	free(buffer);
+	free(stream);
 	
 	//freeUBuffer(buffer);
 	//free(stream);
@@ -386,7 +403,7 @@ static inline uint8_t inRange(uint32_t unicode, uint32_t min, uint32_t max){
 	return (unicode >= min && unicode <= max);
 }
 
-static uint8_t toN(uint8_t input){
+static uint8_t fromHex(uint8_t input){
 	if (input >= 0x30 && input <= 0x39)
 		return (input - 0x30);
 	else if (inRange(input, 0x41, 0x46))//(input >= 0x41 && input <= 0x46)
@@ -425,6 +442,10 @@ static uint8_t matchList(uint32_t* buffer, char** list, uint64_t size){
 	}
 
 	return 0;
+}
+
+static uint8_t checkNumericEnding(uint32_t unicode){
+	
 }
 /*
 static uint8_t isIdentifierUnicodeEscape(struct Stream* stream){
@@ -473,6 +494,21 @@ void releaseTokens(struct Token* token){
 
 }
 
+static double mvTokenizer(struct UnicodeBuffer* buffer, uint8_t type){
+	uint32_t* buf = buffer->buffer;
+	double temp = 0;
+
+
+	while (*buf != 0){
+		printf("U+%x\n", *buf);
+		if (type == 0){
+			temp = (temp * 16) + fromHex(*buf++);
+		}
+	}
+
+	return temp;
+}
+
 const char* getTokenCategory(struct Token* token){
 	uint16_t type = token->type;
 	if (type == TOKEN_START)
@@ -484,7 +520,8 @@ const char* getTokenCategory(struct Token* token){
 			return "<IDENIFIER (RESERVED)>";
 		else
 			return "<IDENIFIER>";
-	}
+	}else if (type == TOKEN_NUMBER)
+		return "<NUMBER>";
 	return "<>";
 }
 static struct Token* createToken(uint8_t tokenType){
@@ -545,6 +582,27 @@ static struct Token* tokenizeIdentifer(uint32_t* items){
 	return token;
 }
 
+static struct Token* tokenizeNumber(double number){
+	struct Token* token = createToken(TOKEN_NUMBER);
+	if (token == NULL)
+		return NULL;
+
+	uint32_t* items = malloc(sizeof(uint32_t) * 2);
+
+	if (items == NULL){
+		free(token);
+		return NULL;
+	}
+
+
+	memcpy(items, &number, sizeof(number));
+
+	token->source = items;
+	token->length = 2;
+
+	return token;
+}
+
 static void appendToken(struct Token* mainToken, struct Token* sub){
 
 	if (mainToken == NULL || sub == NULL)
@@ -569,16 +627,24 @@ static struct Token* getTopToken(struct Token* token){
 }
 static void printTokens(struct Token* tokens){
 	struct Token* temp = tokens;
+	uint32_t type = 0;
 	while (temp != NULL){
+		type = temp->type;
 		printf("{\n\tTokenType: \"%s\"", getTokenCategory(temp));
-		if (temp->type != TOKEN_LINETERMINATOR){
+		if (type == TOKEN_LINETERMINATOR)
+			printf("\n}\n");
+		else if (type == TOKEN_NUMBER){
+			printf("\n\tNumber={");
+			double tmp = 0;
+			memcpy(&tmp, temp->source, sizeof(tmp));
+			printf("%lf}\n}\n", tmp);
+		}else{
 			printf("\n\tCharacters={");
 			printTokenChars(temp, 0);
 			printf("}\n\tStr={");
 			printTokenChars(temp, 1);
 			printf("}\n}\n");
-		}else
-			printf("\n}\n");
+		}
 		temp = temp->next;
 	}
 }

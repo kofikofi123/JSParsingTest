@@ -7,7 +7,7 @@
 #define TOKEN_START 0
 #define TOKEN_LINETERMINATOR 0x01
 #define TOKEN_IDENTIFIER 0x02
-
+#define TOKEN_NUMBER 0x03
 /*Tokenizer States*/
 #define STATE_NORMAL 0
 //Comment States
@@ -26,6 +26,7 @@
 #define STATE_DECIMAL_LITERAL 0xB
 #define STATE_DECIMAL_LEGACY_LITERAL 0xC
 #define STATE_OCTAL_LEGACY_LITERAL 0xD
+#define STATE_AFTER_NUMERIC 0xF
 
 //Token Flags
 #define FLAG_RESERVED 0
