@@ -1,2 +1,2 @@
 //test
-var test = -0xFFFF;
+var test = -0O17;

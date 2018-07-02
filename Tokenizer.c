@@ -324,8 +324,10 @@ struct Token* tokenize(char* source){
 					currentInput = quickAdvance(stream);
 					currentState = STATE_HEX_LITERAL;
 				}else if (currentInput == 0x62 || currentInput == 0x42){
+					currentInput = quickAdvance(stream);
 					currentState = STATE_BIN_LITERAL;
 				}else if (currentInput == 0x6F || currentInput == 0x4F){
+					currentInput = quickAdvance(stream);
 					currentState = STATE_OCTAL_LITERAL;
 				}else if (currentInput == 0x08 || currentInput == 0x09){
 					currentState = STATE_DECIMAL_LEGACY_LITERAL;
@@ -349,7 +351,30 @@ struct Token* tokenize(char* source){
 				reconsume = 1;
 				currentState = STATE_AFTER_NUMERIC;
 			}
+		}else if (currentState == STATE_BIN_LITERAL){
+			if (currentInput == 0x30 || currentInput == 0x31)
+				appendUBuffer(buffer, currentInput);
+			else{
+				numberTemp = mvTokenizer(buffer, 1);
+				reconsume = 1;
+				currentState = STATE_AFTER_NUMERIC;
+			}
+		}else if (currentState == STATE_OCTAL_LITERAL){
+			if (inRange(currentInput, 0x30, 0x37))
+				appendUBuffer(buffer, currentInput);
+			else{
+				numberTemp = mvTokenizer(buffer, 2);
+				reconsume = 1;
+				currentState = STATE_AFTER_NUMERIC;
+			}
 		}else if (currentState == STATE_AFTER_NUMERIC){
+
+			if (isIdentifierStart(currentInput) || isNumeric(currentInput)){
+				printf("U+%x\n", currentInput);
+				produceSyntaxError("Treiok");
+				CLEANUP_SEQUENCE()
+				return NULL;
+			}
 			token = tokenizeNumber(numberTemp);
 
 			if (token == NULL){
@@ -578,12 +603,17 @@ void releaseTokens(struct Token* token){
 static double mvTokenizer(struct UnicodeBuffer* buffer, uint8_t type){
 	uint32_t* buf = buffer->buffer;
 	double temp = 0;
-
+	double decTemp = 0;
+	uint8_t deci = 0;
 
 	while (*buf != 0){
 		printf("U+%x\n", *buf);
 		if (type == 0){
 			temp = (temp * 16) + fromHex(*buf++);
+		}else if (type == 1){
+			temp = (temp * 2) + fromHex(*buf++); 
+		}else if (type == 2){
+			temp = (temp * 8) + fromHex(*buf++);
 		}
 	}
 
@@ -754,7 +784,6 @@ static void printBuffer(struct UnicodeBuffer* buffer){
 	uint32_t temp;
 	while (size-- > 0){
 		temp = *buf++;
-		printf("bufbuf U+%x (%c)\n", temp, (char)temp);
 	}
 	printf("\n\n");
 }
