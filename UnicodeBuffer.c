@@ -95,7 +95,18 @@ uint8_t appendUBuffer(struct UnicodeBuffer* buffer, uint32_t unicode){
 	}
 
 	buffer->buffer[pos] = unicode;
-		buffer->position = pos + 1;
+	buffer->position = pos + 1;
+
+	return 1;
+}
+
+uint8_t retractUBuffer(struct UnicodeBuffer* buffer){
+	uint32_t pos = buffer->position;
+	if (pos == 0) return 0;
+
+	pos--;
+	buffer->buffer[pos] = 0;
+	buffer->position = pos;
 
 	return 1;
 }

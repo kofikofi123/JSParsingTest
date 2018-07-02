@@ -1,2 +1,2 @@
 //test
-var broski\u{61} = 0x1F;
+var test = -0xFFFF;

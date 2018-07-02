@@ -14,6 +14,7 @@ uint8_t createUBuffer(struct UnicodeBuffer*, uint64_t);
 uint8_t resizeUBuffer(struct UnicodeBuffer*, uint64_t);
 uint8_t appendUBuffer(struct UnicodeBuffer*, uint32_t);
 void resetUBuffer(struct UnicodeBuffer*);
+uint8_t retractUBuffer(struct UnicodeBuffer*);
 uint32_t* mallocCopyUBuffer(struct UnicodeBuffer*);
 uint64_t scanU32Buffer(uint32_t*);
 void deleteUBuffer(struct UnicodeBuffer*);

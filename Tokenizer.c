@@ -16,7 +16,8 @@ static struct UnicodeLookup* unilook = NULL;//malloc(sizeof(struct UnicodeLookup
 static char* ID_Start[] = {
 	"Lu", "Ll", "Lt", "Lm", "Lo", "Nl"
 };*/
-
+/*Lookup tables*/
+//Reserved Names
 static char* ReservedName[] = {
 	"await", "break", "case", "catch", "class",
 	"const", "continue", "debugger", "default", "delete",
@@ -34,17 +35,34 @@ static char* FutureReservedName[] = {
 static char* ReservedLiteralName[] = {
 	"true", "false", "null"
 };
+//Puncu
 
+static char* Punctuators[] = {
+	"{", "(", ")", "[", "]",
+	"." "..." ";", ",", "<",
+	">", "<=", ">=", "==", "!=",
+	"===", "!==", "+", "-", "*",
+	"%", "**", "++", "--", "<<",
+	">>", ">>>", "&", "|", "^",
+	"!", "~", "&&", "||", "?",
+	":", "=", "+=", "-=", "*=",
+	"%=", "**=", "<<=", ">>=", ">>>=",
+	"&=", "|=", "^=", "=>", "/",
+	"/=", "}"
+};
+/**/
 static void produceSyntaxError(const char*);
 static void produceOutOfMemoryError(const char*);
 
-//static uint8_t isWhitespace(uint32_t);
+static uint8_t isWhitespace(uint32_t);
 static uint8_t isLineTerminator(uint32_t);
 static uint8_t isIdentifierStart(uint32_t);
 static uint8_t isIdentifierContinue(uint32_t);
 static uint8_t isNumeric(uint32_t);
 static uint8_t isHexNumeric(uint32_t);
+static uint8_t isPunctuator(struct UnicodeBuffer*);
 static uint8_t isReservedName(uint32_t*);
+
 static uint8_t checkNumericEnding(uint32_t);
 static uint8_t matchList(uint32_t*, char**, uint64_t);
 
@@ -59,13 +77,14 @@ static struct Token* getTopToken(struct Token*);
 static struct Token* tokenizeLineTerminator(uint32_t);
 static struct Token* tokenizeIdentifer(uint32_t*);
 static struct Token* tokenizeNumber(double);
+static struct Token* tokenizePunctuatoToken(uint32_t*);
 
 static struct Token* createToken(uint8_t);
 //static struct Token* createLineTerminatorToken(uint32_t);
 
 static void printTokenChars(struct Token*, uint8_t);
 static void printTokens(struct Token*);
-
+static void printBuffer(struct UnicodeBuffer*);
 struct Token* tokenize(char* source){
 
 	struct Stream* stream = newStream(source);
@@ -104,6 +123,13 @@ struct Token* tokenize(char* source){
 			}else if (isNumeric(currentInput)){
 				reconsume = 1;
 				currentState = STATE_NUMERIC_LITERAL;
+			}else if (isWhitespace(currentInput)){
+				reconsume = 1;
+				currentInput = quickAdvance(stream);
+			}else{
+				reconsume = 1;
+				currentState = STATE_PUNCTUATOR;
+				resetUBuffer(buffer);
 			}
 		}else if (currentState == STATE_COMMENT){
 			//save(stream);
@@ -334,6 +360,34 @@ struct Token* tokenize(char* source){
 
 			appendToken(tokens, token);
 			break;
+		}else if (currentState == STATE_PUNCTUATOR){
+			appendUBuffer(buffer, currentInput);
+
+			if (!isPunctuator(buffer)){
+				if (scanU32Buffer(buffer->buffer) == 1){
+					produceSyntaxError("Unknown token");
+					CLEANUP_SEQUENCE()
+					return NULL;
+				}else{
+					retractUBuffer(buffer);
+					token = tokenizePunctuatoToken(mallocCopyUBuffer(buffer));
+
+					if (token == NULL){
+						produceOutOfMemoryError("eok");
+						CLEANUP_SEQUENCE()
+						return NULL;
+					}
+
+
+
+					appendToken(tokens, token);
+					reconsume = 1;
+					currentState = STATE_NORMAL;
+				}
+			}else{
+				//printf("oke oke U+%x\n", scanU32Buffer(buffer->buffer));
+			}
+
 		}
 
 		if (reconsume)
@@ -358,7 +412,7 @@ struct Token* tokenize(char* source){
 	return tokens;
 }
 
-/*
+
 static uint8_t isWhitespace(uint32_t unicode){
 	if (unicode == 0x09 || unicode == 0x0B || unicode == 0x0C || unicode == 0x20 || unicode == 0xA0 || unicode == 0xFEFF)
 		return 1;
@@ -368,7 +422,7 @@ static uint8_t isWhitespace(uint32_t unicode){
 
 
 	return uc_is_property_white_space(unicode);//stringCompareRAW(unilook->generalCategory, "Zs", 3);
-}*/
+}
 
 static uint8_t isLineTerminator(uint32_t unicode){
 	return (unicode == 0x0A || unicode == 0x0D || unicode == 0x2028 || unicode == 0x2029);
@@ -389,6 +443,19 @@ static uint8_t isIdentifierContinue(uint32_t unicode){
 		return 1;
 
 	return uc_is_property_id_continue(unicode);
+}
+
+static struct Token* tokenizePunctuatoToken(uint32_t* buffer){
+	if (buffer == NULL) return NULL;
+
+	struct Token* token = createToken(TOKEN_PUNCTUATOR);
+
+	if (token == NULL) return NULL;
+
+	token->source = buffer;
+	token->length = scanU32Buffer(buffer);
+
+	return token;
 }
 
 static uint8_t isNumeric(uint32_t unicode){
@@ -422,14 +489,27 @@ static uint8_t isReservedName(uint32_t* buffer){
 	return matchList(buffer, FutureReservedName, sizeof(FutureReservedName)/c_size) || matchList(buffer, ReservedLiteralName, sizeof(ReservedLiteralName)/c_size);
 }
 
+static uint8_t isPunctuator(struct UnicodeBuffer* buf){
+	uint32_t* buffer = mallocCopyUBuffer(buf);
+	if (buffer == NULL) return 0;
+	uint8_t result = matchList(buffer, Punctuators, sizeof(Punctuators)/sizeof(char*));
+	printBuffer(buf);
+	free(buffer);
+	return result;
+}
+
 static uint8_t compareBuffer(uint32_t* buffer, char* item){
 	uint32_t tempA = 0, tempB = 0;
-	while (*item != 0 && *buffer != 0){
+
+	if (stringLength(item) != scanU32Buffer(buffer))
+		return 0;
+	while (*item != 0){
 		tempA = (uint32_t)*item++;
 		tempB = *buffer++;
 
 		if (tempA != tempB)
 			return 0;
+
 	}
 
 	return 1;
@@ -437,16 +517,17 @@ static uint8_t compareBuffer(uint32_t* buffer, char* item){
 
 static uint8_t matchList(uint32_t* buffer, char** list, uint64_t size){
 	for (uint64_t i = 0; i < size; i++){
-		if (compareBuffer(buffer, list[i]))
+		if (compareBuffer(buffer, list[i])){
 			return 1;
+		}
 	}
 
 	return 0;
 }
-
+/*
 static uint8_t checkNumericEnding(uint32_t unicode){
 	
-}
+}*/
 /*
 static uint8_t isIdentifierUnicodeEscape(struct Stream* stream){
 	uint32_t input = getCodePoint(stream);
@@ -522,6 +603,8 @@ const char* getTokenCategory(struct Token* token){
 			return "<IDENIFIER>";
 	}else if (type == TOKEN_NUMBER)
 		return "<NUMBER>";
+	else if (type == TOKEN_PUNCTUATOR)
+		return "<PUNCTUATOR>";
 	return "<>";
 }
 static struct Token* createToken(uint8_t tokenType){
@@ -663,4 +746,15 @@ static void printTokenChars(struct Token* token, uint8_t type){
 		else if (type == 1)
 			printf("%lc", (wint_t)temp);
 	}
+}
+
+static void printBuffer(struct UnicodeBuffer* buffer){
+	uint32_t * buf = buffer->buffer;
+	uint32_t size = scanU32Buffer(buf);
+	uint32_t temp;
+	while (size-- > 0){
+		temp = *buf++;
+		printf("bufbuf U+%x (%c)\n", temp, (char)temp);
+	}
+	printf("\n\n");
 }
