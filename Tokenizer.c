@@ -3,10 +3,11 @@
 #include <unictype.h>
 #include <wchar.h>
 #include <string.h>
+#include <math.h>
+
 #include "Stream.h"
 #include "Tokenizer.h"
 #include "UnicodeBuffer.h"
-//#include "Unilook.h"
 #include "Utils.h"
 #include "KString.h"
 /*
@@ -39,7 +40,7 @@ static char* ReservedLiteralName[] = {
 
 static char* Punctuators[] = {
 	"{", "(", ")", "[", "]",
-	"." "..." ";", ",", "<",
+	".", "...", ";", ",", "<",
 	">", "<=", ">=", "==", "!=",
 	"===", "!==", "+", "-", "*",
 	"%", "**", "++", "--", "<<",
@@ -84,7 +85,7 @@ static struct Token* createToken(uint8_t);
 
 static void printTokenChars(struct Token*, uint8_t);
 static void printTokens(struct Token*);
-static void printBuffer(struct UnicodeBuffer*);
+//static void printBuffer(struct UnicodeBuffer*);
 struct Token* tokenize(char* source){
 
 	struct Stream* stream = newStream(source);
@@ -103,7 +104,14 @@ struct Token* tokenize(char* source){
 	uint8_t reconsume = 0;
 	uint8_t currentState = 0;
 	uint8_t isUniEsc = 0;
+
 	double numberTemp = 0;
+	double deciTemp = 0;
+	double expoTemp = 0;
+	double* dTemp = NULL;
+	uint8_t signBit = 0;
+	uint8_t nMode = 0;
+	uint8_t deciPoints = 0;
 
 	do {
 		if (currentState == STATE_NORMAL){
@@ -314,8 +322,16 @@ struct Token* tokenize(char* source){
 			token = NULL;
 			currentState = STATE_NORMAL;
 			isUniEsc = 0;
+			reconsume = 1;
 		}else if (currentState == STATE_NUMERIC_LITERAL){
 			resetUBuffer(buffer);
+			numberTemp = 0;
+			deciTemp = 0;
+			expoTemp = 0;
+			deciPoints = 0;
+			signBit = 0;
+			dTemp = NULL;
+			nMode = 0;
 			save(stream);
 			reconsume = 1;
 			if (currentInput == 0x30){
@@ -331,12 +347,53 @@ struct Token* tokenize(char* source){
 					currentState = STATE_OCTAL_LITERAL;
 				}else if (currentInput == 0x08 || currentInput == 0x09){
 					currentState = STATE_DECIMAL_LEGACY_LITERAL;
-				}else{
+				}else if (currentInput == 0x2E){
+					currentState = STATE_DECIMAL_LITERAL;
+				}else if (inRange(currentInput, 0x30, 0x37)){
 					currentState = STATE_OCTAL_LEGACY_LITERAL;
+				}else{
+					restore(stream);
+					currentState = STATE_DECIMAL_LITERAL;
 				}
 			}else{
 				restore(stream);
 				currentState = STATE_DECIMAL_LITERAL;
+			}
+		}else if (currentState == STATE_DECIMAL_LITERAL){
+			if (isNumeric(currentInput)){
+				appendUBuffer(buffer, currentInput);
+				if (nMode == 1) deciPoints++;
+			}else{
+				if (nMode == 0)
+					dTemp = &numberTemp;
+				else if (nMode == 1)
+					dTemp = &deciTemp;
+				else if (nMode == 2)
+					dTemp = &expoTemp;
+
+				*dTemp = mvTokenizer(buffer, 3);
+				
+				if (currentInput == 0x2E){
+					nMode = 1;
+					resetUBuffer(buffer);
+				}else if (currentInput == 0x45 || currentInput == 0x65){
+					currentInput = quickAdvance(stream);
+
+					if (currentInput == 0x2D){
+						signBit = 1;
+						currentInput = quickAdvance(stream);
+					}else if (currentInput == 0x2B){
+						currentInput = quickAdvance(stream);
+					}
+
+					reconsume = 1;
+					nMode = 2;
+
+					resetUBuffer(buffer);
+				}else{
+					reconsume = 1;
+					currentState = STATE_AFTER_NUMERIC;
+				}
 			}
 		}else if (currentState == STATE_HEX_LITERAL){
 			if (isHexNumeric(currentInput)){
@@ -375,7 +432,7 @@ struct Token* tokenize(char* source){
 				CLEANUP_SEQUENCE()
 				return NULL;
 			}
-			token = tokenizeNumber(numberTemp);
+			token = tokenizeNumber((numberTemp + (deciTemp * pow(10, -deciPoints))) * (pow(10, pow(-1, signBit) * expoTemp)));
 
 			if (token == NULL){
 				produceOutOfMemoryError("eok tiok");
@@ -384,13 +441,30 @@ struct Token* tokenize(char* source){
 			}
 
 			appendToken(tokens, token);
-			break;
+			reconsume = 1;
+			currentState = STATE_NORMAL;
 		}else if (currentState == STATE_PUNCTUATOR){
+			if (currentInput == 0x2E){
+				save(stream);
+				currentInput = quickAdvance(stream);
+				printf("the code U+%x\n", currentInput);
+				if (isNumeric(currentInput)){
+					restore(stream);
+					reconsume = 1;
+					currentInput = getCodePoint(stream);
+					currentState = STATE_NUMERIC_LITERAL;
+					continue;
+				}
+
+				restore(stream);
+			}
 			appendUBuffer(buffer, currentInput);
 
 			if (!isPunctuator(buffer)){
 				if (scanU32Buffer(buffer->buffer) == 1){
 					produceSyntaxError("Unknown token");
+					//printBuffer(buffer);
+					printf("U+%x\n", currentInput);
 					CLEANUP_SEQUENCE()
 					return NULL;
 				}else{
@@ -425,7 +499,6 @@ struct Token* tokenize(char* source){
 			break;
 		}
 	}while(1);
-	printf("eok\n");
 	printTokens(tokens);
 
 	free(buffer);
@@ -517,8 +590,8 @@ static uint8_t isReservedName(uint32_t* buffer){
 static uint8_t isPunctuator(struct UnicodeBuffer* buf){
 	uint32_t* buffer = mallocCopyUBuffer(buf);
 	if (buffer == NULL) return 0;
+
 	uint8_t result = matchList(buffer, Punctuators, sizeof(Punctuators)/sizeof(char*));
-	printBuffer(buf);
 	free(buffer);
 	return result;
 }
@@ -603,17 +676,18 @@ void releaseTokens(struct Token* token){
 static double mvTokenizer(struct UnicodeBuffer* buffer, uint8_t type){
 	uint32_t* buf = buffer->buffer;
 	double temp = 0;
-	double decTemp = 0;
-	uint8_t deci = 0;
+	//double decTemp = 0;
+	//uint8_t deci = 0;
 
 	while (*buf != 0){
-		printf("U+%x\n", *buf);
 		if (type == 0){
 			temp = (temp * 16) + fromHex(*buf++);
 		}else if (type == 1){
 			temp = (temp * 2) + fromHex(*buf++); 
 		}else if (type == 2){
 			temp = (temp * 8) + fromHex(*buf++);
+		}else if (type == 3){
+			temp = (temp * 10) + fromHex(*buf++);
 		}
 	}
 
@@ -680,6 +754,17 @@ inline void clearTokenFlag(struct Token* token, uint32_t flag){
 inline uint8_t getTokenFlag(struct Token* token, uint32_t flag){
 	return (token->flags & (1 << flag)) == (1 << flag);
 }
+/*
+static void printBuffer(struct UnicodeBuffer* buffer){
+	uint32_t * buf = buffer->buffer;
+	uint32_t size = scanU32Buffer(buf);
+	uint32_t temp;
+	while (size-- > 0){
+		temp = *buf++;
+		printf("In buffer: U+%x\n", temp);
+	}
+	printf("\n\n");
+}*/
 
 static struct Token* tokenizeIdentifer(uint32_t* items){
 	struct Token* token = createToken(TOKEN_IDENTIFIER);
@@ -776,14 +861,4 @@ static void printTokenChars(struct Token* token, uint8_t type){
 		else if (type == 1)
 			printf("%lc", (wint_t)temp);
 	}
-}
-
-static void printBuffer(struct UnicodeBuffer* buffer){
-	uint32_t * buf = buffer->buffer;
-	uint32_t size = scanU32Buffer(buf);
-	uint32_t temp;
-	while (size-- > 0){
-		temp = *buf++;
-	}
-	printf("\n\n");
 }
