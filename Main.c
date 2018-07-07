@@ -19,7 +19,7 @@ int main(int argc, char* argv[]){
 	if (!tokens)
 		exit(EXIT_FAILURE);
 
-
+	releaseTokens(tokens);
 	free(content);
 	return 0;
 }

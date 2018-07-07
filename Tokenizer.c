@@ -131,6 +131,8 @@ struct Token* tokenize(char* source){
 			}else if (isNumeric(currentInput)){
 				reconsume = 1;
 				currentState = STATE_NUMERIC_LITERAL;
+			}else if (currentInput == 0x22){
+				currentState = STATE_MULTI_STRING;
 			}else if (isWhitespace(currentInput)){
 				reconsume = 1;
 				currentInput = quickAdvance(stream);
@@ -139,6 +141,8 @@ struct Token* tokenize(char* source){
 				currentState = STATE_PUNCTUATOR;
 				resetUBuffer(buffer);
 			}
+		}else if (currentState == STATE_MULTI_STRING){
+			break;
 		}else if (currentState == STATE_COMMENT){
 			//save(stream);
 			if (currentInput == 0x2F)

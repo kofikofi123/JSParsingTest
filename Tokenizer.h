@@ -30,16 +30,12 @@
 #define STATE_AFTER_NUMERIC 0xF
 //Punctuation
 #define STATE_PUNCTUATOR 0x10
+//String states
+#define STATE_MULTI_STRING 0x11
 
 //Token Flags
 #define FLAG_RESERVED 0
 #define FLAG_LEGACY 1
-
-//Temporary or perm clean up solution
-#define CLEANUP_SEQUENCE() \
-	freeUBuffer(buffer); \
-	free(tokens); \
-	free(stream); \
 /*
 [Moved to Stream.h]
 struct Stream {
@@ -67,6 +63,12 @@ uint32_t tokenCodePoint(struct Token*);
 void setTokenFlag(struct Token*, uint32_t);
 void clearTokenFlag(struct Token*, uint32_t);
 uint8_t getTokenFlag(struct Token*, uint32_t);
+
+//Temporary or perm clean up solution
+#define CLEANUP_SEQUENCE() \
+	freeUBuffer(buffer); \
+	releaseTokens(tokens); \
+	free(stream); \
 /*
 [Moved to Stream.h]
 uint32_t getCodePoint(struct Stream*);
