@@ -20,8 +20,8 @@ ecmaString* newString(uint16_t* buffer, uint64_t length){
 
 ecmaString*	convertAsciiToString(const char* source){
 	uint64_t sourceLength = stringLength(source);
-
-	uint16_t* buffer = u8_to_u16((uint8_t*)source, sourceLength, NULL, 0);
+	size_t lengthp;
+	uint16_t* buffer = u8_to_u16((uint8_t*)source, sourceLength, NULL, &lengthp);
 
 	if (buffer == NULL) return NULL;
 
@@ -30,10 +30,15 @@ ecmaString*	convertAsciiToString(const char* source){
 
 ecmaString* convertUniToString(uint32_t* source){
 	uint64_t length = scanU32Buffer(source);
-
-	uint16_t* buffer = u32_to_u16(source, length, NULL, 0);
+	size_t lengthp;
+	uint16_t* buffer = u32_to_u16(source, length, NULL, &lengthp);
 
 	if (buffer == NULL) return NULL;
 
 	return newString(buffer, length);
+}
+
+void freeString(ecmaString* string){
+	free(string->Buffer);
+	free(string);
 }

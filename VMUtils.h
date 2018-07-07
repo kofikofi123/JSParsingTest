@@ -46,4 +46,8 @@ ecmaString* newString(uint16_t*, uint64_t);
 ecmaString*	convertAsciiToString(const char*);
 ecmaString* convertUniToString(uint32_t*);
 
+
+//cleanup
+void freeString(ecmaString*);
+
 #endif
