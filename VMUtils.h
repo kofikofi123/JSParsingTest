@@ -28,15 +28,15 @@ typedef struct ecmaScriptValue {
 
 
 struct ecmaSciptDataPropertyDesc {
-	ecmaValue Value;
+	ecmaValue Value; //will change, maybe
 	ecmaBool Writable;
 	ecmaBool Enumerable;
 	ecmaBool Configurable;
 };
 
 struct ecmaScriptAccessPropertyDesc {
-	ecmaObject Get;
-	ecmaObject Set;
+	ecmaObject* Get;
+	ecmaObject* Set;
 	ecmaBool Enumerable;
 	ecmaBool Configurable;
 };
