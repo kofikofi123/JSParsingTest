@@ -25,7 +25,7 @@ ecmaString*	convertAsciiToString(const char* source){
 
 	if (buffer == NULL) return NULL;
 
-	return newString(buffer, sourceLength);
+	return newString(buffer, lengthp);
 }
 
 ecmaString* convertUniToString(uint32_t* source){
@@ -35,7 +35,7 @@ ecmaString* convertUniToString(uint32_t* source){
 
 	if (buffer == NULL) return NULL;
 
-	return newString(buffer, length);
+	return newString(buffer, lengthp);
 }
 
 void freeString(ecmaString* string){

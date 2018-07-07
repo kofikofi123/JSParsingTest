@@ -7,6 +7,7 @@
 
 char* readFile(const char*);
 
+
 int main(int argc, char* argv[]){
 	if (argc < 2){
 		printf("Not enogh args\n");
@@ -31,4 +32,3 @@ int main(int argc, char* argv[]){
 	free(content);
 	return 0;
 }
- 
